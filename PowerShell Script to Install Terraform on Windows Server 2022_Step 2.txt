@@ -1,0 +1,30 @@
+# Set Terraform version
+$terraformVersion = "1.5.7"
+$terraformZip = "terraform_${terraformVersion}_windows_amd64.zip"
+$terraformURL = "https://releases.hashicorp.com/terraform/$terraformVersion/$terraformZip"
+$installPath = "C:\Terraform"
+$envPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
+
+# Create install directory
+if (!(Test-Path $installPath)) {
+    New-Item -ItemType Directory -Path $installPath | Out-Null
+}
+
+# Download Terraform
+Write-Host "Downloading Terraform..."
+Invoke-WebRequest -Uri $terraformURL -OutFile "$installPath\$terraformZip"
+
+# Extract Terraform
+Write-Host "Extracting Terraform..."
+Expand-Archive -Path "$installPath\$terraformZip" -DestinationPath $installPath -Force
+
+# Add Terraform to PATH
+if ($envPath -notlike "*$installPath*") {
+    Write-Host "Adding Terraform to system PATH..."
+    $newPath = "$installPath;$envPath"
+    [System.Environment]::SetEnvironmentVariable("Path", $newPath, [System.EnvironmentVariableTarget]::Machine)
+}
+
+# Verify Installation
+Write-Host "Verifying Terraform Installation..."
+terraform version
