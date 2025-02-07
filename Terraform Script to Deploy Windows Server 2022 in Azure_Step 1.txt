@@ -1,0 +1,116 @@
+provider "azurerm" {
+  features {}
+}
+
+# Updated Resource Group
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-dev-vm"
+  location = "East US"
+}
+
+# Updated Virtual Network
+resource "azurerm_virtual_network" "vnet" {
+  name                = "vnet-toat-dev"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  address_space       = ["10.0.0.0/16"]
+}
+
+resource "azurerm_subnet" "subnet" {
+  name                 = "CCTOLLDEVDB13-Subnet"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+resource "azurerm_network_interface" "nic" {
+  name                = "CCTOLLDEVDB13-NIC"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnet.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+resource "azurerm_windows_virtual_machine" "vm" {
+  name                = "CCTOLLDEVDB13"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  size                = "Standard_D4s_v3" # 4 vCPU, 32GB RAM
+  admin_username      = "adminuser"
+  admin_password      = "ArcadisPass10!" # Change this
+
+  network_interface_ids = [azurerm_network_interface.nic.id]
+
+  os_disk {
+    name                 = "osdisk"
+    caching              = "ReadWrite"
+    storage_account_type = "Premium_LRS"
+    disk_size_gb         = 130
+  }
+
+  additional_unattend_content {
+    setting = "AutoLogon"
+    content = "<AutoLogon><Password><Value>ArcadisPass10!</Value></Password><Enabled>true</Enabled><LogonCount>1</LogonCount><Username>adminuser</Username></AutoLogon>"
+  }
+
+  additional_capabilities {
+    ultra_ssd_enabled = false
+  }
+
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2022-datacenter"
+    version   = "latest"
+  }
+}
+
+# Data Disks
+resource "azurerm_managed_disk" "oracle_disk" {
+  name                 = "oracle-software-disk"
+  resource_group_name  = azurerm_resource_group.rg.name
+  location             = azurerm_resource_group.rg.location
+  storage_account_type = "Premium_LRS"
+  disk_size_gb         = 120
+}
+
+resource "azurerm_managed_disk" "backup_disk" {
+  name                 = "backup-disk"
+  resource_group_name  = azurerm_resource_group.rg.name
+  location             = azurerm_resource_group.rg.location
+  storage_account_type = "Standard_LRS"
+  disk_size_gb         = 300
+}
+
+resource "azurerm_managed_disk" "database_disk" {
+  name                 = "database-storage-disk"
+  resource_group_name  = azurerm_resource_group.rg.name
+  location             = azurerm_resource_group.rg.location
+  storage_account_type = "Premium_LRS"
+  disk_size_gb         = 600
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "oracle_attachment" {
+  managed_disk_id    = azurerm_managed_disk.oracle_disk.id
+  virtual_machine_id = azurerm_windows_virtual_machine.vm.id
+  lun               = 0
+  caching           = "ReadWrite"
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "backup_attachment" {
+  managed_disk_id    = azurerm_managed_disk.backup_disk.id
+  virtual_machine_id = azurerm_windows_virtual_machine.vm.id
+  lun               = 1
+  caching           = "ReadWrite"
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "database_attachment" {
+  managed_disk_id    = azurerm_managed_disk.database_disk.id
+  virtual_machine_id = azurerm_windows_virtual_machine.vm.id
+  lun               = 2
+  caching           = "ReadWrite"
+}
